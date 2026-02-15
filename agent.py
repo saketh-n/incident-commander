@@ -8,8 +8,9 @@
 - **Action:** The agent must now call these tools *before* finalizing the report. It shouldn't just guess; it must "investigate."
 '''
 
-from pydantic_ai import Agent
+from pydantic_ai import Agent, RunContext
 from models import IncidentReport
+from deps import SupportContext
 import random
 
 incident_response_agent = Agent[str](
@@ -18,26 +19,32 @@ incident_response_agent = Agent[str](
     system_prompt='You are a Senior SRE. Do not guess. You must investigate health metrics and recent deployment logs before concluding any Incident Report. Please take a look at the following unstructured text description of an incident and parse it into a structured format'
 )
 
-@incident_response_agent.tool_plain
-def get_service_health(service_name: str):
+@incident_response_agent.tool
+def get_service_health(ctx: RunContext[SupportContext], service_name: str):
     """
     Checks CPU and Memory for a specific service.
     
     Args:
         service_name: The name of the service to check (e.g., 'auth-api', 'payments').
     """
-    return {'cpu': random.randint(1, 100), 'memory': random.randint(1, 100)}
+    if (service_name in ctx.deps.service_registry.keys()):
+        return {'cpu': random.randint(1, 100), 'memory': random.randint(1, 100)}
 
-@incident_response_agent.tool_plain
-def query_deployment_logs(service_name: str):
+    return f"Service {service_name} was not found in list of services {ctx.deps.service_registry.keys()}"
+
+@incident_response_agent.tool
+def query_deployment_logs(ctx: RunContext[SupportContext], service_name: str):
     """
     Returns the most recent Git commits for a service.
     """
-    return [
-        "feat(auth): add JWT rotation logic to identity provider (#442)",
-        "fix(db): increase connection pool size to 50 for high-load events",
-        "chore: update kubernetes manifest for resource limits in us-east-1",
-        "perf!: refactor message broker consumer to use batching logic",
-        "fix(api): handle null pointer exception when service-x is unreachable",
-        "docs: update incident runbook for service-unavailable errors"
-    ]
+    if (service_name in ctx.deps.service_registry.keys()):
+        return [
+            "feat(auth): add JWT rotation logic to identity provider (#442)",
+            "fix(db): increase connection pool size to 50 for high-load events",
+            "chore: update kubernetes manifest for resource limits in us-east-1",
+            "perf!: refactor message broker consumer to use batching logic",
+            "fix(api): handle null pointer exception when service-x is unreachable",
+            "docs: update incident runbook for service-unavailable errors"
+        ]
+
+    return f"Service {service_name} was not found in list of services {ctx.deps.service_registry.keys()}"
