@@ -1,32 +1,24 @@
 from agent import incident_response_agent
-from deps import SupportContext
+from deps import deps
+import logfire
+from logfire import ScrubMatch
 
 messy_slack_messages = ['OMG the DB is down', "Network spike in us-east-1", "50 percent of hosts are off-line in eu-west-1"]
-# Use this as your 'service_registry' dictionary
-SERVICES_GATEWAY = {
-    "auth-provider": {
-        "tier": 1,
-        "owner": "identity-team",
-        "description": "Handles user authentication and JWT issuance"
-    },
-    "payment-processor": {
-        "tier": 1,
-        "owner": "billing-eng",
-        "description": "Processes all customer transactions and refunds"
-    },
-    "image-resizer": {
-        "tier": 3,
-        "owner": "media-infra",
-        "description": "Async processing for user profile uploads"
-    },
-    "search-index-01": {
-        "tier": 2,
-        "owner": "search-platform",
-        "description": "Maintains the pgvector indices for search"
-    }
-}
 
-deps = SupportContext(service_registry=SERVICES_GATEWAY, api_key="sk-internal-cloud-auth-9922", environment="production")
+# Custom scrubbing callback that only scrubs specific patterns
+def scrubbing_callback(match: ScrubMatch) -> str:
+    # we don't want to scrub any auth (just for this case)
+    if match.pattern_match.group(0) == 'auth':
+        return match.value
 
-for message in messy_slack_messages:
-    print(incident_response_agent.run_sync(message, deps=deps).output)
+logfire.configure(
+    scrubbing=logfire.ScrubbingOptions(callback=scrubbing_callback)
+)
+
+logfire.instrument_pydantic_ai()
+
+def parse_messy_slack_messages(messy_slack_messages: list[str]):
+    for message in messy_slack_messages:
+        print(incident_response_agent.run_sync(message, deps=deps).output)
+
+parse_messy_slack_messages(messy_slack_messages)
