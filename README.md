@@ -1,103 +1,61 @@
-This roadmap outlines a rigorous, 4-hour intensive to master **PydanticAI**. By moving from simple text generation to type-safe dependency injection, you’ll build an agent capable of surviving a production environment.
+# Learnings: PydanticAI Framework
+
+## 1. Structured Output (Schema)
+
+The core philosophy of PydanticAI is that LLM interactions should be treated like data validation. By using Pydantic models, you enforce strict type-safety on LLM responses.
+
+- **Guaranteed Shape:** The LLM is forced to return data that fits a defined BaseModel.
+
+- **Automatic Retries:** If the LLM output fails validation (e.g., a missing field or wrong type), the framework automatically sends the error back to the LLM to "fix" its own mistake.
+
+- **Usage:** Defined via the result_type parameter in the Agent constructor.
 
 ---
 
-# 🛠️ PydanticAI Masterclass: From Strings to Systems
+## 2. Tool Use (Function Calling)
 
-This repository contains a structured, 4-phase implementation of an **Automated Incident Response Agent**. We move beyond simple "chatbots" to build a type-safe, tool-augmented system designed for reliability.
+Tools allow the agent to perform actions or fetch real-time data. PydanticAI uses Python's type hints to tell the LLM how to use them.
 
-## 📈 Roadmap Overview
+- **Self-Documenting:** Tool metadata (descriptions, arguments) is inferred directly from the function signature and docstrings.
 
-| Phase | Focus | Key Concept |
-| --- | --- | --- |
-| **1. Structured Outputs** | Validation | Moving from `str` to Pydantic Schemas. |
-| **2. System Tools** | Agency | Giving the LLM "hands" via type-hinted tools. |
-| **3. Dependency Injection** | Architecture | Managing state and resources via `deps`. |
-| **4. Observability** | Reliability | Tracing the thought loop and unit testing logic. |
+- **@agent.tool:** Used for tools that require access to the RunContext (e.g., accessing a database or API key defined in the agent's dependencies).
 
----
+- **@agent.tool_plain:** Used for "pure" functions that only need their input arguments and do not require any external agent state.
 
-## 🏗️ Phase 1: Structured Outputs & Validation
-
-**Goal:** Ensure the LLM speaks the language of your backend.
-
-We define a strict schema for incident reporting. If the LLM tries to return a category that doesn't exist (e.g., "DATABASE"), PydanticAI will automatically catch the error and ask the model to retry until it conforms to the `IncidentReport` model.
-
-```python
-from enum import Enum
-from pydantic import BaseModel
-
-class RootCause(str, Enum):
-    NETWORK = "NETWORK"
-    DISK = "DISK"
-    AUTH = "AUTH"
-    CODE = "CODE"
-
-class IncidentReport(BaseModel):
-    impact_score: int
-    root_cause_category: RootCause
-    is_critical: bool
-    summary: str
-
-```
+- **Lazy Discovery:** Tools can be added to an agent dynamically at runtime.
 
 ---
 
-## 🔧 Phase 2: System Tools & Type Safety
+## 3. Agent Context (Dependency Injection)
 
-**Goal:** Investigation over hallucination.
+This pattern keeps agents "stateless" and highly testable by "injecting" external services.
 
-Instead of guessing why a server is down, the agent uses `@agent.tool`. PydanticAI inspects your Python **type hints** to explain to the LLM exactly what arguments these tools require.
+- **Deps Class:** A Python class (usually a Dataclass or BaseModel) containing services, API clients, or database connections.
 
-* `get_service_health`: Returns real-time metrics (CPU/RAM).
-* `query_deployment_logs`: Checks recent git commits for potential "bad deploys."
+- **RunContext:** Within a tool, you access these dependencies via ctx.deps.
 
----
-
-## 💉 Phase 3: Dependency Injection
-
-**Goal:** Professional-grade resource management.
-
-In production, tools shouldn't have "hardcoded" access to everything. We use `SupportContext` to inject dependencies. This allows us to:
-
-1. Verify if a service exists in a **Service Registry** before querying it.
-2. Pass **API Keys** securely without global variables.
-3. Easily swap real services for mocks during testing.
-
-```python
-@dataclass
-class SupportContext:
-    service_registry: dict[str, str]
-    api_key: str
-    debug_mode: bool = True
-
-```
+- **Security:** Sensitive credentials stay in your control and aren't leaked into the LLM prompt unless explicitly defined in the logic.
 
 ---
 
-## 🔍 Phase 4: Observability & Testing
+## 4. Testing & Evals**
 
-**Goal:** Verify the "Thought Loop."
+Because PydanticAI is built on standard Python patterns, testing is significantly more robust than in "prompt-only" frameworks.
 
-We implement logging to trace how many steps the agent takes to reach a conclusion. We validate the agent against three distinct scenarios:
+### Unit Testing Tools
 
-1. **Database Timeout:** Expects `RootCause.NETWORK`.
-2. **Bad Deployment:** Expects `RootCause.CODE`.
-3. **False Alarm:** Expects `is_critical=False`.
+- **Isolated Testing:** Since tools are standard functions, they can be tested individually.
 
----
+- **Mocking Context:** You can manually create a RunContext object to test tool behavior with specific mocked dependencies (like a mock database).
 
-## 🚀 Getting Started
+### Integration & Monitoring
 
-1. **Install dependencies:**
-```bash
-pip install pydantic-ai logfire
+- **capture_run_messages:** A context manager that records every message sent to and from the LLM. This allows you to assert that the agent actually called the correct tool in a specific sequence.
 
-```
+- **Test Node:** Run agents in "Test Mode" to bypass LLM costs and use recorded/mocked responses for CI/CD pipelines.
 
+### Systematic Evaluations (Evals)
 
-2. **Run the Agent:**
-```bash
-python main.py
+- **Golden Test Sets:** Creating a suite of prompt/response pairs to ensure the agent's logic remains consistent over time.
 
-```
+- **Performance Benchmarking:** Quantifying how often the agent chooses the correct tool versus attempting a direct answer.
